@@ -141,7 +141,7 @@ class Projects::MergeRequestsController < Projects::ApplicationController
   end
 
   def ci_status
-    ci_service = @merge_request.source_project.ci_service
+    ci_service = @merge_request.target_project.ci_service
     status = ci_service.commit_status(merge_request.last_commit.sha)
 
     if ci_service.respond_to?(:commit_coverage)
@@ -224,7 +224,7 @@ class Projects::MergeRequestsController < Projects::ApplicationController
   end
 
   def allowed_to_merge?
-    allowed_to_push_code?(project, @merge_request.target_branch)
+    ::Gitlab::GitAccess.can_merge?(current_user, project, @merge_request.target_branch, @merge_request.author_id)
   end
 
   def invalid_mr

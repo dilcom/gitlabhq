@@ -6,12 +6,18 @@ module Gitlab
     attr_reader :params, :project, :git_cmd, :user
 
     def self.can_push_to_branch?(user, project, ref)
+      return false if !user
       if project.protected_branch?(ref)  &&
           !(project.developers_can_push_to_protected_branch?(ref) && project.team.developer?(user))
         user.can?(:push_code_to_protected_branches, project)
       else
         user.can?(:push_code, project)
       end
+    end
+
+    def self.can_merge?(user, project, ref, author_id)
+      can_push_to_branch?(user, project, ref) ||
+        (project.developers_can_merge_to_protected_branch?(ref) && project.team.developer?(user) && user.id != author_id)
     end
 
     def check(actor, cmd, project, changes = nil)
