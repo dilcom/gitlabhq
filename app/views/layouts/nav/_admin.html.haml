@@ -5,7 +5,7 @@
       %span
         Overview
   = nav_link(controller: :projects) do
-    = link_to admin_projects_path, title: 'Projects' do
+    = link_to admin_namespaces_projects_path, title: 'Projects' do
       %i.fa.fa-cube
       %span
         Projects
@@ -45,6 +45,12 @@
       %i.fa.fa-cloud
       %span
         Applications
+
+  = nav_link(controller: :services) do
+    = link_to admin_application_settings_services_path, title: 'Service Templates' do
+      %i.fa.fa-copy
+      %span
+        Service Templates
 
   = nav_link(controller: :application_settings, html_options: { class: 'separate-item'}) do
     = link_to admin_application_settings_path, title: 'Settings' do

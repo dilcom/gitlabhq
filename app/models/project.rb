@@ -33,9 +33,12 @@ require 'carrierwave/orm/activerecord'
 require 'file_size_validator'
 
 class Project < ActiveRecord::Base
+  include Sortable
   include Gitlab::ShellAdapter
   include Gitlab::VisibilityLevel
   include Gitlab::ConfigHelper
+  include Rails.application.routes.url_helpers
+
   extend Gitlab::ConfigHelper
   extend Enumerize
 
@@ -47,13 +50,19 @@ class Project < ActiveRecord::Base
   default_value_for :wall_enabled, false
   default_value_for :snippets_enabled, gitlab_config_features.snippets
 
+  # set last_activity_at to the same as created_at
+  after_create :set_last_activity_at
+  def set_last_activity_at
+    update_column(:last_activity_at, self.created_at)
+  end
+
   ActsAsTaggableOn.strict_case_match = true
   acts_as_taggable_on :tags
 
   attr_accessor :new_default_branch
 
   # Relations
-  belongs_to :creator,      foreign_key: 'creator_id', class_name: 'User'
+  belongs_to :creator, foreign_key: 'creator_id', class_name: 'User'
   belongs_to :group, -> { where(type: Group) }, foreign_key: 'namespace_id'
   belongs_to :namespace
 
@@ -64,10 +73,12 @@ class Project < ActiveRecord::Base
   has_one :gitlab_ci_service, dependent: :destroy
   has_one :campfire_service, dependent: :destroy
   has_one :emails_on_push_service, dependent: :destroy
+  has_one :irker_service, dependent: :destroy
   has_one :pivotaltracker_service, dependent: :destroy
   has_one :hipchat_service, dependent: :destroy
   has_one :flowdock_service, dependent: :destroy
   has_one :assembla_service, dependent: :destroy
+  has_one :asana_service, dependent: :destroy
   has_one :gemnasium_service, dependent: :destroy
   has_one :slack_service, dependent: :destroy
   has_one :buildbox_service, dependent: :destroy
@@ -86,7 +97,7 @@ class Project < ActiveRecord::Base
   has_many :merge_requests,     dependent: :destroy, foreign_key: 'target_project_id'
   # Merge requests from source project should be kept when source project was removed
   has_many :fork_merge_requests, foreign_key: 'source_project_id', class_name: MergeRequest
-  has_many :issues, -> { order 'issues.state DESC, issues.created_at DESC' }, dependent: :destroy
+  has_many :issues,             dependent: :destroy
   has_many :labels,             dependent: :destroy
   has_many :services,           dependent: :destroy
   has_many :events,             dependent: :destroy
@@ -120,15 +131,12 @@ class Project < ActiveRecord::Base
               message: Gitlab::Regex.path_regex_message }
   validates :issues_enabled, :merge_requests_enabled,
             :wiki_enabled, inclusion: { in: [true, false] }
-  validates :visibility_level,
-    exclusion: { in: gitlab_config.restricted_visibility_levels },
-    if: -> { gitlab_config.restricted_visibility_levels.any? }
   validates :issues_tracker_id, length: { maximum: 255 }, allow_blank: true
   validates :namespace, presence: true
   validates_uniqueness_of :name, scope: :namespace_id
   validates_uniqueness_of :path, scope: :namespace_id
   validates :import_url,
-    format: { with: URI::regexp(%w(git http https)), message: 'should be a valid url' },
+    format: { with: URI::regexp(%w(ssh git http https)), message: 'should be a valid url' },
     if: :import?
   validates :star_count, numericality: { greater_than_or_equal_to: 0 }
   validate :check_limit, on: :create
@@ -136,17 +144,18 @@ class Project < ActiveRecord::Base
     if: ->(project) { project.avatar && project.avatar_changed? }
   validates :avatar, file_size: { maximum: 200.kilobytes.to_i }
 
-  mount_uploader :avatar, AttachmentUploader
+  mount_uploader :avatar, AvatarUploader
 
   # Scopes
+  scope :sorted_by_activity, -> { reorder(last_activity_at: :desc) }
+  scope :sorted_by_stars, -> { reorder('projects.star_count DESC') }
+  scope :sorted_by_names, -> { joins(:namespace).reorder('namespaces.name ASC, projects.name ASC') }
+
   scope :without_user, ->(user)  { where('projects.id NOT IN (:ids)', ids: user.authorized_projects.map(&:id) ) }
   scope :without_team, ->(team) { team.projects.present? ? where('projects.id NOT IN (:ids)', ids: team.projects.map(&:id)) : scoped  }
   scope :not_in_group, ->(group) { where('projects.id NOT IN (:ids)', ids: group.project_ids ) }
-  scope :in_team, ->(team) { where('projects.id IN (:ids)', ids: team.projects.map(&:id)) }
   scope :in_namespace, ->(namespace) { where(namespace_id: namespace.id) }
   scope :in_group_namespace, -> { joins(:group) }
-  scope :sorted_by_activity, -> { reorder('projects.last_activity_at DESC') }
-  scope :sorted_by_stars, -> { reorder('projects.star_count DESC') }
   scope :personal, ->(user) { where(namespace_id: user.namespace_id) }
   scope :joined, ->(user) { where('namespace_id != ?', user.namespace_id) }
   scope :public_only, -> { where(visibility_level: Project::PUBLIC) }
@@ -228,13 +237,10 @@ class Project < ActiveRecord::Base
     end
 
     def sort(method)
-      case method.to_s
-      when 'newest' then reorder('projects.created_at DESC')
-      when 'oldest' then reorder('projects.created_at ASC')
-      when 'recently_updated' then reorder('projects.updated_at DESC')
-      when 'last_updated' then reorder('projects.updated_at ASC')
-      when 'largest_repository' then reorder('projects.repository_size DESC')
-      else reorder('namespaces.path, projects.name ASC')
+      if method == 'repository_size_desc'
+        reorder(repository_size: :desc, id: :desc)
+      else
+        order_by(method)
       end
     end
   end
@@ -284,7 +290,7 @@ class Project < ActiveRecord::Base
   end
 
   def to_param
-    namespace.path + '/' + path
+    path
   end
 
   def web_url
@@ -320,7 +326,7 @@ class Project < ActiveRecord::Base
   end
 
   def default_issue_tracker
-    gitlab_issue_tracker_service ||= create_gitlab_issue_tracker_service
+    gitlab_issue_tracker_service || create_gitlab_issue_tracker_service
   end
 
   def issues_tracker
@@ -352,18 +358,28 @@ class Project < ActiveRecord::Base
   end
 
   def build_missing_services
-    available_services_names.each do |service_name|
-      service = services.find { |service| service.to_param == service_name }
+    services_templates = Service.where(template: true)
+
+    Service.available_services_names.each do |service_name|
+      service = find_service(services, service_name)
 
       # If service is available but missing in db
-      # we should create an instance. Ex `create_gitlab_ci_service`
-      service = self.send :"create_#{service_name}_service" if service.nil?
+      if service.nil?
+        # We should check if template for the service exists
+        template = find_service(services_templates, service_name)
+
+        if template.nil?
+          # If no template, we should create an instance. Ex `create_gitlab_ci_service`
+          service = self.send :"create_#{service_name}_service"
+        else
+          Service.create_from_template(self.id, template)
+        end
+      end
     end
   end
 
-  def available_services_names
-    %w(gitlab_ci campfire hipchat pivotaltracker flowdock assembla
-       emails_on_push gemnasium slack pushover buildbox bamboo teamcity jira redmine custom_issue_tracker)
+  def find_service(list, name)
+    list.find { |service| service.to_param == name }
   end
 
   def gitlab_ci?
@@ -389,6 +405,14 @@ class Project < ActiveRecord::Base
     @avatar_file ||= 'logo.jpg' if repository.blob_at_branch('master', 'logo.jpg')
     @avatar_file ||= 'logo.gif' if repository.blob_at_branch('master', 'logo.gif')
     @avatar_file
+  end
+
+  def avatar_url
+    if avatar.present?
+      [gitlab_config.url, avatar.url].join
+    elsif avatar_in_git
+      [gitlab_config.url, namespace_project_avatar_path(namespace, self)].join
+    end
   end
 
   # For compatibility with old code
@@ -417,13 +441,13 @@ class Project < ActiveRecord::Base
     end
   end
 
-  def team_member_by_name_or_email(name = nil, email = nil)
+  def project_member_by_name_or_email(name = nil, email = nil)
     user = users.where('name like ? or email like ?', name, email).first
     project_members.where(user: user) if user
   end
 
   # Get Team Member record by user id
-  def team_member_by_id(user_id)
+  def project_member_by_id(user_id)
     project_members.find_by(user_id: user_id)
   end
 
@@ -451,8 +475,9 @@ class Project < ActiveRecord::Base
     end
   end
 
-  def execute_services(data)
-    services.select(&:active).each do |service|
+  def execute_services(data, hooks_scope = :push_hooks)
+    # Call only service hooks that are active for this scope
+    services.send(hooks_scope).each do |service|
       service.async_execute(data)
     end
   end

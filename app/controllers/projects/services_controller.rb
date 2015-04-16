@@ -17,8 +17,11 @@ class Projects::ServicesController < Projects::ApplicationController
 
   def update
     if @service.update_attributes(service_params)
-      redirect_to edit_project_service_path(@project, @service.to_param),
-       notice: 'Successfully updated.'
+      redirect_to(
+        edit_namespace_project_service_path(@project.namespace, @project,
+                                            @service.to_param, notice:
+                                            'Successfully updated.')
+      )
     else
       render 'edit'
     end
@@ -29,7 +32,7 @@ class Projects::ServicesController < Projects::ApplicationController
     if @service.execute(data)
       message = { notice: 'We sent a request to the provided URL' }
     else
-      message = { alert: 'We tried to send a request to the provided URL but error occured' }
+      message = { alert: 'We tried to send a request to the provided URL but an error occured' }
     end
 
     redirect_to :back, message
@@ -47,7 +50,10 @@ class Projects::ServicesController < Projects::ApplicationController
       :room, :recipients, :project_url, :webhook,
       :user_key, :device, :priority, :sound, :bamboo_url, :username, :password,
       :build_key, :server, :teamcity_url, :build_type,
-      :description, :issues_url, :new_issue_url
+      :description, :issues_url, :new_issue_url, :restrict_to_branch, :channel,
+      :colorize_messages, :channels,
+      :push_events, :issues_events, :merge_requests_events, :tag_push_events,
+      :note_events, :send_from_committer_email, :disable_diffs
     )
   end
 end

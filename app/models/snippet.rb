@@ -16,6 +16,7 @@
 #
 
 class Snippet < ActiveRecord::Base
+  include Sortable
   include Linguist::BlobHelper
   include Gitlab::VisibilityLevel
 
@@ -56,6 +57,10 @@ class Snippet < ActiveRecord::Base
 
   def data
     content
+  end
+
+  def hook_attrs
+    attributes
   end
 
   def size

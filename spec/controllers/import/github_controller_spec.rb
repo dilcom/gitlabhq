@@ -5,35 +5,42 @@ describe Import::GithubController do
 
   before do
     sign_in(user)
+    controller.stub(:github_import_enabled?).and_return(true)
   end
 
   describe "GET callback" do
     it "updates access token" do
       token = "asdasd12345"
-      Gitlab::GithubImport::Client.any_instance.stub(:get_token).and_return(token)
-      Gitlab.config.omniauth.providers << OpenStruct.new(app_id: "asd123", app_secret: "asd123", name: "github")
+      allow_any_instance_of(Gitlab::GithubImport::Client).
+        to receive(:get_token).and_return(token)
+      Gitlab.config.omniauth.providers << OpenStruct.new(app_id: 'asd123',
+                                                         app_secret: 'asd123',
+                                                         name: 'github')
 
       get :callback
-      
-      user.reload.github_access_token.should == token
-      controller.should redirect_to(status_import_github_url)
+
+      expect(user.reload.github_access_token).to eq(token)
+      expect(controller).to redirect_to(status_import_github_url)
     end
   end
 
   describe "GET status" do
     before do
       @repo = OpenStruct.new(login: 'vim', full_name: 'asd/vim')
+      @org = OpenStruct.new(login: 'company')
+      @org_repo = OpenStruct.new(login: 'company', full_name: 'company/repo')
     end
 
     it "assigns variables" do
       @project = create(:project, import_type: 'github', creator_id: user.id)
       controller.stub_chain(:client, :repos).and_return([@repo])
-      controller.stub_chain(:client, :orgs).and_return([])
+      controller.stub_chain(:client, :orgs).and_return([@org])
+      controller.stub_chain(:client, :org_repos).with(@org.login).and_return([@org_repo])
 
       get :status
 
       expect(assigns(:already_added_projects)).to eq([@project])
-      expect(assigns(:repos)).to eq([@repo])
+      expect(assigns(:repos)).to eq([@repo, @org_repo])
     end
 
     it "does not show already added project" do
@@ -55,7 +62,8 @@ describe Import::GithubController do
 
     it "takes already existing namespace" do
       namespace = create(:namespace, name: "john", owner: user)
-      Gitlab::GithubImport::ProjectCreator.should_receive(:new).with(@repo, namespace, user).
+      expect(Gitlab::GithubImport::ProjectCreator).
+        to receive(:new).with(@repo, namespace, user).
         and_return(double(execute: true))
       controller.stub_chain(:client, :repo).and_return(@repo)
 

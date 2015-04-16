@@ -2,22 +2,27 @@
 #
 # Table name: services
 #
-#  id         :integer          not null, primary key
-#  type       :string(255)
-#  title      :string(255)
-#  project_id :integer          not null
-#  created_at :datetime
-#  updated_at :datetime
-#  active     :boolean          default(FALSE), not null
-#  properties :text
+#  id                    :integer          not null, primary key
+#  type                  :string(255)
+#  title                 :string(255)
+#  project_id            :integer
+#  created_at            :datetime
+#  updated_at            :datetime
+#  active                :boolean          default(FALSE), not null
+#  properties            :text
+#  template              :boolean          default(FALSE)
+#  push_events           :boolean          default(TRUE)
+#  issues_events         :boolean          default(TRUE)
+#  merge_requests_events :boolean          default(TRUE)
+#  tag_push_events       :boolean          default(TRUE)
 #
 
 require 'spec_helper'
 
 describe BuildboxService do
   describe 'Associations' do
-    it { should belong_to :project }
-    it { should have_one :service_hook }
+    it { is_expected.to belong_to :project }
+    it { is_expected.to have_one :service_hook }
   end
 
   describe 'commits methods' do
@@ -38,35 +43,39 @@ describe BuildboxService do
 
     describe :webhook_url do
       it 'returns the webhook url' do
-        @service.webhook_url.should ==
+        expect(@service.webhook_url).to eq(
           'https://webhook.buildbox.io/deliver/secret-sauce-webhook-token'
+        )
       end
     end
 
     describe :commit_status_path do
       it 'returns the correct status page' do
-        @service.commit_status_path('2ab7834c').should ==
+        expect(@service.commit_status_path('2ab7834c')).to eq(
           'https://gitlab.buildbox.io/status/secret-sauce-status-token.json?commit=2ab7834c'
+        )
       end
     end
 
     describe :build_page do
       it 'returns the correct build page' do
-        @service.build_page('2ab7834c').should ==
+        expect(@service.build_page('2ab7834c')).to eq(
           'https://buildbox.io/account-name/example-project/builds?commit=2ab7834c'
+        )
       end
     end
 
     describe :builds_page do
       it 'returns the correct path to the builds page' do
-        @service.builds_path.should ==
+        expect(@service.builds_path).to eq(
           'https://buildbox.io/account-name/example-project/builds?branch=default-brancho'
+        )
       end
     end
 
     describe :status_img_path do
       it 'returns the correct path to the status image' do
-        @service.status_img_path.should == 'https://badge.buildbox.io/secret-sauce-status-token.svg'
+        expect(@service.status_img_path).to eq('https://badge.buildbox.io/secret-sauce-status-token.svg')
       end
     end
   end

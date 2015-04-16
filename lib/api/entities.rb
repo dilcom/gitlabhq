@@ -56,6 +56,7 @@ module API
       expose :issues_enabled, :merge_requests_enabled, :wiki_enabled, :snippets_enabled, :created_at, :last_activity_at
       expose :namespace
       expose :forked_from_project, using: Entities::ForkedFromProject, if: lambda{ | project, options | project.forked? }
+      expose :avatar_url
     end
 
     class ProjectMember < UserBasic
@@ -65,7 +66,7 @@ module API
     end
 
     class Group < Grape::Entity
-      expose :id, :name, :path, :owner_id, :description
+      expose :id, :name, :path, :description
     end
 
     class GroupDetail < Group
@@ -142,7 +143,7 @@ module API
 
     class ProjectEntity < Grape::Entity
       expose :id, :iid
-      expose (:project_id) { |entity| entity.project.id }
+      expose(:project_id) { |entity| entity.project.id }
       expose :title, :description
       expose :state, :created_at, :updated_at
     end
@@ -269,6 +270,10 @@ module API
 
     class Contributor < Grape::Entity
       expose :name, :email, :commits, :additions, :deletions
+    end
+
+    class BroadcastMessage < Grape::Entity
+      expose :message, :starts_at, :ends_at, :color, :font
     end
   end
 end

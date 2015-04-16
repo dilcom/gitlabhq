@@ -2,22 +2,27 @@
 #
 # Table name: services
 #
-#  id         :integer          not null, primary key
-#  type       :string(255)
-#  title      :string(255)
-#  project_id :integer          not null
-#  created_at :datetime
-#  updated_at :datetime
-#  active     :boolean          default(FALSE), not null
-#  properties :text
+#  id                    :integer          not null, primary key
+#  type                  :string(255)
+#  title                 :string(255)
+#  project_id            :integer
+#  created_at            :datetime
+#  updated_at            :datetime
+#  active                :boolean          default(FALSE), not null
+#  properties            :text
+#  template              :boolean          default(FALSE)
+#  push_events           :boolean          default(TRUE)
+#  issues_events         :boolean          default(TRUE)
+#  merge_requests_events :boolean          default(TRUE)
+#  tag_push_events       :boolean          default(TRUE)
 #
 
 require 'spec_helper'
 
 describe AssemblaService, models: true do
   describe "Associations" do
-    it { should belong_to :project }
-    it { should have_one :service_hook }
+    it { is_expected.to belong_to :project }
+    it { is_expected.to have_one :service_hook }
   end
 
   describe "Execute" do
@@ -40,7 +45,7 @@ describe AssemblaService, models: true do
 
     it "should call Assembla API" do
       @assembla_service.execute(@sample_data)
-      WebMock.should have_requested(:post, @api_url).with(
+      expect(WebMock).to have_requested(:post, @api_url).with(
         body: /#{@sample_data[:before]}.*#{@sample_data[:after]}.*#{project.path}/
       ).once
     end

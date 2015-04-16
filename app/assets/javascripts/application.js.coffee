@@ -16,7 +16,9 @@
 #= require jquery.scrollTo
 #= require jquery.blockUI
 #= require jquery.turbolinks
+#= require jquery.sticky-kit.min
 #= require turbolinks
+#= require autosave
 #= require bootstrap
 #= require select2
 #= require raphael
@@ -31,7 +33,6 @@
 #= require nprogress
 #= require nprogress-turbolinks
 #= require dropzone
-#= require semantic-ui/sidebar
 #= require mousetrap
 #= require mousetrap/pause
 #= require shortcuts
@@ -114,7 +115,6 @@ if location.hash
 window.addEventListener "hashchange", shiftWindow
 
 $ ->
-
   # Click a .one_click_select field, select the contents
   $(".one_click_select").on 'click', -> $(@).select()
 
@@ -181,6 +181,8 @@ $ ->
     text = btn.data("confirm-danger-message")
     form = btn.closest("form")
     new ConfirmDangerModal(form, text)
+
+  new Aside()
 
 (($) ->
   # Disable an element and add the 'disabled' Bootstrap class

@@ -83,7 +83,10 @@ module API
     end
 
     def authenticate_by_gitlab_shell_token!
-      unauthorized! unless secret_token == params['secret_token']
+      input = params['secret_token'].try(:chomp)
+      unless Devise.secure_compare(secret_token, input)
+        unauthorized!
+      end
     end
 
     def authenticated_as_admin!
@@ -154,6 +157,22 @@ module API
       Gitlab::Access.options_with_owner.values.include? level.to_i
     end
 
+    def issuable_order_by
+      if params["order_by"] == 'updated_at'
+        'updated_at'
+      else
+        'created_at'
+      end
+    end
+
+    def issuable_sort
+      if params["sort"] == 'asc'
+        :asc
+      else
+        :desc
+      end
+    end
+
     # error helpers
 
     def forbidden!(reason = nil)
@@ -188,7 +207,7 @@ module API
     end
 
     def render_validation_error!(model)
-      unless model.valid?
+      if model.errors.any?
         render_api_error!(model.errors.messages || '400 Bad Request', 400)
       end
     end
@@ -220,7 +239,12 @@ module API
     end
 
     def secret_token
-      File.read(Rails.root.join('.gitlab_shell_secret'))
+      File.read(Rails.root.join('.gitlab_shell_secret')).chomp
+    end
+
+    def handle_member_errors(errors)
+      error!(errors[:access_level], 422) if errors[:access_level].any?
+      not_found!(errors)
     end
   end
 end

@@ -2,22 +2,27 @@
 #
 # Table name: services
 #
-#  id         :integer          not null, primary key
-#  type       :string(255)
-#  title      :string(255)
-#  project_id :integer          not null
-#  created_at :datetime
-#  updated_at :datetime
-#  active     :boolean          default(FALSE), not null
-#  properties :text
+#  id                    :integer          not null, primary key
+#  type                  :string(255)
+#  title                 :string(255)
+#  project_id            :integer
+#  created_at            :datetime
+#  updated_at            :datetime
+#  active                :boolean          default(FALSE), not null
+#  properties            :text
+#  template              :boolean          default(FALSE)
+#  push_events           :boolean          default(TRUE)
+#  issues_events         :boolean          default(TRUE)
+#  merge_requests_events :boolean          default(TRUE)
+#  tag_push_events       :boolean          default(TRUE)
 #
 
 require 'spec_helper'
 
 describe JiraService do
   describe "Associations" do
-    it { should belong_to :project }
-    it { should have_one :service_hook }
+    it { is_expected.to belong_to :project }
+    it { is_expected.to have_one :service_hook }
   end
 
   describe "Validations" do
@@ -26,9 +31,9 @@ describe JiraService do
         subject.active = true
       end
 
-      it { should validate_presence_of :project_url }
-      it { should validate_presence_of :issues_url }
-      it { should validate_presence_of :new_issue_url }
+      it { is_expected.to validate_presence_of :project_url }
+      it { is_expected.to validate_presence_of :issues_url }
+      it { is_expected.to validate_presence_of :new_issue_url }
     end
   end
 
@@ -79,7 +84,7 @@ describe JiraService do
           "new_issue_url" => "http://jira.sample/projects/project_a/issues/new"
           }
         }
-        Gitlab.config.stub(:issues_tracker).and_return(settings)
+        allow(Gitlab.config).to receive(:issues_tracker).and_return(settings)
         @service = project.create_jira_service(active: true)
       end
 
